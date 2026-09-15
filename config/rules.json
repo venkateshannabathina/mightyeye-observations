@@ -1,0 +1,12 @@
+{
+  "restricted_zones": ["restricted"],
+  "loiter_zones": ["waiting"],
+  "loiter_seconds": 30,
+  "abandoned_seconds": 45,
+  "stationary_seconds": 3,
+  "max_gap_seconds": 2,
+  "track_ttl_seconds": 10,
+  "forbidden_directions": {"exit": "IN"},
+  "vehicle_lines": ["entry"],
+  "rule_version": "rules-v1"
+}

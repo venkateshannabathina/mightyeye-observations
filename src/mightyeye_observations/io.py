@@ -1,7 +1,9 @@
 """Portable JSON array / JSONL storage, with contextual validation errors."""
+
 import json
-from pathlib import Path
 from collections.abc import Iterable, Iterator
+from pathlib import Path
+
 from .contract import Observation
 
 
@@ -33,7 +35,12 @@ def write_observations(path: str | Path, observations: Iterable[Observation]) ->
     # Exclusive creation protects existing recordings from accidental overwrite.
     with path.open("x", encoding="utf-8") as stream:
         if path.suffix == ".json":
-            json.dump([o.model_dump(mode="json") for o in items], stream, indent=2, allow_nan=False)
+            json.dump(
+                [o.model_dump(mode="json") for o in items],
+                stream,
+                indent=2,
+                allow_nan=False,
+            )
             stream.write("\n")
         else:
             for item in items:

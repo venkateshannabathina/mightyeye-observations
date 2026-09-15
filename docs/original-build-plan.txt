@@ -1,0 +1,517 @@
+MIGHTYEYE — SIH HACKATHON BUILD PLAN
+
+FINAL ARCHITECTURE
+
+CCTV
+  ↓
+NVIDIA DeepStream
+  ↓
+Detection / Tracking / ANPR
+  ↓
+Observation Adapter
+  ↓
+World State
+  ↓
+Cross-Camera + Event Engine
+  ↓
+Candidate Incident
+  ↓
+Optional VLM Verification
+  ↓
+Incident
+  ↓
+Database + Evidence
+  ↓
+Dashboard
+
+
+==================================================
+M1 — DEEPSTREAM VERTICAL SLICE
+==================================================
+
+1. Set up DeepStream 9.1 runtime
+- Ubuntu + NVIDIA GPU / Jetson
+- Verify NVIDIA drivers and GPU inference
+- Run official DeepStream sample
+- Test local video input
+- Test RTSP input
+- Document setup
+
+DONE WHEN:
+DeepStream can process video reliably using GPU.
+
+
+2. Build DeepStream ingest → detection → tracking
+Pipeline:
+
+RTSP / Video
+  ↓
+Decode
+  ↓
+StreamMux
+  ↓
+Person + Vehicle Detector
+  ↓
+Tracker
+  ↓
+Metadata
+
+Required metadata:
+- camera_id
+- timestamp
+- local_track_id
+- class
+- bbox
+- confidence
+
+DONE WHEN:
+Person/vehicle detection works and track IDs stay stable. —pending
+
+
+3. Configure DeepStream Analytics
+Add:
+- ROI / zones
+- line crossing
+- direction
+- overcrowding if useful
+
+Example:
+Person P17 entered restricted_zone.
+Person P17 crossed GateLine.
+Person P17 direction = OUT.
+
+DONE WHEN:
+DeepStream produces reliable zone/line/direction metadata.
+
+
+4. Build Observation Adapter -working
+
+Convert DeepStream metadata into one MightyEye format:
+
+{
+  observation_id,
+  camera_id,
+  timestamp,
+  local_track_id,
+  entity_type,
+  bbox,
+  confidence,
+  zone,
+  direction,
+  line_crossing,
+  model_version,
+  evidence_pointer
+}
+
+RULE:
+Nothing outside the DeepStream module should depend directly on DeepStream-specific metadata.
+
+DONE WHEN:
+The rest of MightyEye can work using saved observation JSON without DeepStream running.
+
+
+==================================================
+M2 — WORLD STATE + EVENT ENGINE
+==================================================
+
+5. Build Live World State
+
+Maintain current state for every tracked entity:
+
+Person P17
+- camera: CAM01
+- zone: RestrictedZone
+- first_seen
+- last_seen
+- dwell_time
+- direction
+- movement_state
+- confidence
+
+Start with an in-memory store.
+Do NOT use Neo4j.
+
+DONE WHEN:
+The system can answer:
+"Who/what is currently where?"
+
+
+6. Build Temporal Event Engine
+
+Use deterministic rules/state machines.
+
+FIRST 3 EVENTS:
+
+A. Restricted Zone Intrusion
+Person enters configured restricted ROI.
+
+B. Loitering
+Person stays inside an area longer than configured threshold.
+
+C. Abandoned Object
+Person + object associated
+→ object becomes stationary
+→ person moves away
+→ object remains alone for N seconds.
+
+Every candidate incident must contain:
+
+{
+  candidate_id,
+  event_type,
+  involved_entities,
+  cameras,
+  start_time,
+  end_time,
+  confidence,
+  reasons[],
+  source_observation_ids[]
+}
+
+DONE WHEN:
+Recorded test footage repeatedly produces the same expected event.
+
+
+7. Add two simple events
+
+D. Wrong Direction
+Tracked entity crosses configured line in forbidden direction.
+
+E. Vehicle Entry
+Vehicle crosses gate/entry line and creates an event.
+
+FINAL HACKATHON EVENT SET:
+1. Restricted intrusion
+2. Loitering
+3. Abandoned object
+4. Wrong direction
+5. Vehicle entry
+
+
+==================================================
+M3 — INCIDENT + EVIDENCE + BACKEND
+==================================================
+
+8. Build Evidence Recording
+
+Use DeepStream Smart Record.
+
+When an incident candidate occurs:
+- preserve video before trigger
+- preserve video after trigger
+- save best frame if useful
+- save entity/vehicle crop if useful
+
+Example:
+
+evidence/
+  EVT-0042/
+    clip.mp4
+    frame.jpg
+    person.jpg
+    metadata.json
+
+DONE WHEN:
+Every important incident has playable original evidence.
+
+
+9. Build PostgreSQL Storage
+
+TABLES:
+
+cameras
+observations
+entities
+incidents
+evidence
+reviews
+
+Incident fields:
+- incident_id
+- type
+- start/end
+- entities
+- cameras
+- confidence
+- reasons
+- source observations
+- evidence path
+- verification status
+- rule/model version
+
+Store metadata in PostgreSQL.
+Store actual video/images on filesystem/object storage.
+
+DONE WHEN:
+Incidents survive backend restart and can be searched.
+
+
+10. Build FastAPI Backend
+
+Endpoints:
+
+GET /cameras
+GET /world
+GET /incidents
+GET /incidents/{id}
+GET /evidence/{id}
+GET /health
+
+WS /live
+
+WebSocket should send:
+- live world-state changes
+- new incidents
+- stream health updates
+
+DONE WHEN:
+Frontend can use the whole system without talking directly to DeepStream.
+
+
+11. Build Dashboard
+
+ONLY 3 MAIN SCREENS:
+
+A. LIVE OPERATIONS
+- camera feeds
+- boxes / IDs
+- current world state
+- system status
+
+B. INCIDENTS
+- chronological incident feed
+- type
+- camera
+- time
+- severity/confidence
+
+C. INCIDENT DETAIL
+- video evidence
+- event timeline
+- entities involved
+- why alert fired
+- confidence
+- optional VLM result
+
+DONE WHEN:
+A judge can click an alert and immediately understand:
+WHAT happened,
+WHERE,
+WHEN,
+WHO/WHAT was involved,
+WHY the system triggered,
+and see the EVIDENCE.
+
+
+==================================================
+M4 — CROSS-CAMERA + ANPR
+==================================================
+
+12. Implement ONE Camera-Pair Cross-Camera Tracking
+
+Only support:
+
+CAM01 → CAM02
+
+Use:
+- manually configured camera topology
+- travel-time window
+- Re-ID appearance similarity
+- direction consistency
+
+Example:
+
+CAM01 local ID P17
+        ↓
+Re-ID + topology + time
+        ↓
+CAM02 local ID P08
+
+GLOBAL ENTITY = GP-004
+association_confidence = 0.87
+
+IMPORTANT:
+If confidence is weak → UNKNOWN.
+Do not force identities.
+
+DONE WHEN:
+One staged person can reliably move from CAM01 to CAM02 and remain one global entity.
+
+
+13. Add ANPR
+
+Vehicle detected
+  ↓
+Vehicle crop
+  ↓
+Plate detector
+  ↓
+OCR
+  ↓
+Plate text + confidence
+
+Store:
+
+Vehicle V05
+plate = PB10AB1234
+plate_confidence = 0.91
+
+Attach plate data to Vehicle Entry incidents.
+
+DONE WHEN:
+At least one staged vehicle entry produces readable plate metadata.
+
+
+==================================================
+M5 — OPTIONAL INTELLIGENCE + TESTING
+==================================================
+
+14. Add Optional VLM Verification
+
+DO NOT continuously send video to VLM.
+
+Flow:
+
+Event Engine
+  ↓
+Candidate Incident
+  ↓
+Important / uncertain?
+  ↓ YES
+Relevant frames/clip
+  ↓
+VLM
+  ↓
+Verification result
+
+Store VLM inference separately from facts.
+
+Example:
+
+Observed:
+- person placed bag
+- person moved away
+- bag remained 45 seconds
+
+Rule:
+possible_abandoned_object
+
+VLM:
+"Person appears to leave the bag behind."
+
+DONE WHEN:
+VLM can strengthen/reject a candidate without being required for the core system.
+
+
+15. Add Monitoring + Failure Logging
+
+Track:
+
+- FPS
+- event latency
+- CPU
+- GPU
+- RAM
+- dropped frames
+- stream disconnects/reconnects
+- tracker resets
+- false incidents
+- missed incidents
+- VLM calls/latency
+
+Review options:
+
+CONFIRMED
+FALSE
+UNCERTAIN
+
+Failure reasons:
+- detector
+- tracker
+- cross-camera
+- rule
+- occlusion
+- low light
+- bad camera/input
+- overload
+
+
+16. Build Repeatable Hackathon Demo Dataset
+
+Create controlled clips for:
+
+- normal walking
+- restricted intrusion
+- loitering
+- abandoned object
+- wrong direction
+- vehicle + visible plate
+- CAM01 → CAM02 handover
+- negative clips that should NOT trigger alerts
+
+Create:
+
+scripts/run_demo.sh
+
+DONE WHEN:
+The entire demo can be replayed reliably before judging.
+
+
+==================================================
+CRITICAL BUILD ORDER
+==================================================
+
+DeepStream Setup
+  ↓
+Detection + Tracking
+  ↓
+ROI / Line / Direction
+  ↓
+Observation Adapter
+  ↓
+World State
+  ↓
+Intrusion Event
+  ↓
+Incident
+  ↓
+Evidence Clip
+  ↓
+Database
+  ↓
+API
+  ↓
+Dashboard
+  ↓
+More Events
+  ↓
+Second Camera
+  ↓
+Cross-Camera
+  ↓
+ANPR
+  ↓
+VLM
+  ↓
+Metrics + Demo Polish
+
+
+==================================================
+MOST IMPORTANT MILESTONE
+==================================================
+
+DO NOT move into fancy features until this works:
+
+CAMERA
+  ↓
+PERSON TRACK
+  ↓
+EVENT
+  ↓
+INCIDENT
+  ↓
+VIDEO EVIDENCE
+  ↓
+DASHBOARD
+
+Once this single vertical chain works reliably, the core MightyEye prototype is alive.

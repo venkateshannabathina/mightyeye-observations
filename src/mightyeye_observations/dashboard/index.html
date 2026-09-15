@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MightyEye · Operations</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/assets/style.css" />
+  </head>
+  <body>
+    <aside>
+      <a class="brand" href="#live"
+        ><span class="mark">◉</span> mightyeye<span class="brand-dot"
+          >.</span
+        ></a
+      >
+      <div class="workspace">SIH 2026 <span>OPERATIONS</span></div>
+      <nav>
+        <a href="#live" id="nav-live">◫ <span>Live operations</span></a
+        ><a href="#incidents" id="nav-incidents"
+          >☷ <span>Incidents</span><b id="nav-count">0</b></a
+        >
+      </nav>
+      <div class="side-bottom">
+        <span class="status-dot"></span> <span id="connection">Connecting</span>
+        <p>Visual intelligence<br />Evidence before conclusions.</p>
+      </div>
+    </aside>
+    <main>
+      <header>
+        <div class="breadcrumb">
+          MIGHTYEYE <span>/</span> <span id="crumb">LIVE OPERATIONS</span>
+        </div>
+        <div class="header-right">
+          <span id="mode" class="pill">Loading</span><time id="clock"></time>
+        </div>
+      </header>
+      <div id="error" role="alert" hidden></div>
+      <div id="content" aria-live="polite"></div>
+      <footer>
+        OBSERVE. UNDERSTAND. VERIFY.<span>MightyEye / SIH Hackathon</span>
+      </footer>
+    </main>
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>

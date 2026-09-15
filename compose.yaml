@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: mightyeye
+      POSTGRES_DB: mightyeye
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mightyeye -d mightyeye"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+psycopg://mightyeye:${POSTGRES_PASSWORD}@db:5432/mightyeye
+      EVIDENCE_ROOT: /app/output/evidence
+      MIGHTYEYE_MODE: ${MIGHTYEYE_MODE:-live}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - evidence-data:/app/output
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+volumes:
+  postgres-data:
+  evidence-data:

@@ -1,10 +1,13 @@
 """Version 1 public wire contract; contains no vendor types."""
+
 from datetime import datetime, timezone
 from typing import Annotated, Literal
 from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Text = Annotated[str, Field(min_length=1, max_length=512)]
+
 
 class Observation(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)

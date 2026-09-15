@@ -1,88 +1,131 @@
-# MightyEye Observations
+# MightyEye
 
-Stage 4 of the MightyEye SIH build: a stable observation contract, NVIDIA DeepStream adapter, fake observation creator, and offline JSON replay. Python 3.11+. Offline usage needs no NVIDIA hardware, camera, DeepStream, or `pyds`.
+**Evidence-backed visual intelligence for the SIH hackathon.**
 
-## Run in five minutes
+A working software vertical slice: observations → World State → five deterministic event rules → incidents → playable evidence → persistent storage → FastAPI → an operator dashboard.
 
-```sh
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -e '.[dev]'
-mightyeye-observations generate --scenario line-crossing --frames 30 --output output/demo.jsonl
-mightyeye-observations validate output/demo.jsonl
-mightyeye-observations replay output/demo.jsonl
-pytest -q
-```
+The original Stage 4 observation tools remain compatible. The project now includes the subsequent backend stages and explicit integration boundaries for NVIDIA DeepStream, cross-camera appearance matching, ANPR, and optional VLM verification.
 
-Replay prints **30 observations, 1 track, 1 line-crossing candidate**. Try `zone-entry` for a zone-enter candidate, or `multi-camera` for two independent camera tracks. `--seed` selects a deterministic synthetic session identity; trajectories are deliberately scripted. Use a new output filename for each run; the generator refuses overwrites.
+> Start here: [16-step build guide](docs/BUILD_GUIDE.md) · [verified status](docs/BUILD_STATUS.md) · [NVIDIA runbook](docs/NVIDIA_SETUP.md)
 
-Saved fixtures work immediately:
+## Run the full local demo
+
+Use **Python 3.11 or newer**. On Macs where `python3` is the system Python 3.9, select your installed Python 3.12 executable instead.
 
 ```sh
-mightyeye-observations replay examples/observations.jsonl
-mightyeye-observations validate examples/observations.json
-mightyeye-observations schema
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.lock
+.venv/bin/python -m pip install -e '.[dev]'
+./scripts/run_demo.sh
 ```
+
+Open **http://127.0.0.1:8000**. API documentation: **http://127.0.0.1:8000/docs**.
+
+The script generates a controlled synthetic dataset, verifies expected events, saves original synthetic source clips, cuts incident evidence, and starts the dashboard. Re-running it does not duplicate observations or incidents. It writes only under `output/demo/` by default.
+
+**Expected result:** 237 observations, exactly five incidents, five playable evidence clips, zero incidents from the two negative cameras. The plate and cross-camera feature examples are explicitly synthetic; no recognition accuracy is claimed.
+
+### The three screens
+
+1. **Live Operations:** observation sources, current local tracks, status, recent incidents.
+2. **Incidents:** chronological feed with type and camera filters.
+3. **Incident Detail:** video, supporting observations, trigger rationale, confidence, plate data when supplied, optional verification, operator reviews.
+
+Synthetic mode shows state at the end of replay. Source previews are saved evidence clips, not live CCTV. Without configured video, a clearly labeled track map is displayed.
 
 ## Architecture
 
 ```text
-CCTV → DeepStream [Detection / Tracking / ANPR]
-                  ↓
-           Observation Adapter
-                  ↓  public Observation JSON (boundary)
-              World State
-                  ↓
-       Cross-Camera + Event Engine
-                  ↓
-          Candidate Incident
-                  ↓
-       Optional VLM Verification
-                  ↓
-                Incident
-                  ↓
-         Database + Evidence → Dashboard
+CCTV / video
+  ↓
+DeepStream: decode → detection → tracking → analytics
+  ↓
+Observation Adapter ← synthetic observation creator
+  ↓                       ↓
+Public 12-field Observation JSON / JSONL
+  ↓
+World State → temporal event rules
+  ↓
+Candidate incident → optional VLM result (separate from facts)
+  ↓
+PostgreSQL metadata + filesystem evidence
+  ↓
+FastAPI / WebSocket → dashboard
 ```
 
-| Directory | Responsibility |
+**Dependency rule:** no module outside `deepstream/` imports vendor bindings or reads DeepStream metadata. SDK-free replay is tested with NVIDIA imports explicitly blocked.
+
+## Repository layout
+
+```text
+src/mightyeye_observations/
+  contract.py                 # exact 12-field observation contract
+  deepstream/                 # adapter, analytics extraction, live runtime, recording bridge
+  engine.py                   # current tracks and five temporal state machines
+  domain.py                   # rule, candidate, review and health contracts
+  service.py                  # transaction orchestration and provenance checks
+  storage.py                  # PostgreSQL / SQLite repository
+  evidence.py                 # original-source clip extraction and registration
+  api.py                      # REST + WebSocket + dashboard delivery
+  dashboard/                  # three screens; no frontend build required
+  association.py              # conservative CAM01 → CAM02 matching
+  anpr.py                     # vehicle crop → supplied detector/OCR → plate result
+  verification.py             # optional provider, separate inference result
+  demo_pipeline.py            # repeatable controlled synthetic dataset
+config/                       # temporal rules and NVIDIA analytics example
+schemas/                      # versioned public observation JSON Schema
+scripts/                      # full demo and NVIDIA environment checks
+examples/                     # original observation fixtures
+tests/                       # unit, integration and PostgreSQL checks
+docs/                        # build guide, status, architecture and deployment
+```
+
+## Five event rules
+
+| Event | Trigger |
 | --- | --- |
-| `src/mightyeye_observations/contract.py` | Strict, immutable public 12-field model |
-| `src/mightyeye_observations/deepstream/` | Vendor metadata conversion and optional SDK import |
-| `src/mightyeye_observations/synthetic.py` | Reproducible fake observations |
-| `src/mightyeye_observations/io.py` | Validated JSON array and JSONL reading/writing |
-| `src/mightyeye_observations/world_state.py` | Minimal reference consumer and candidate generation |
-| `schemas/` | Versioned JSON Schema for other services/languages |
-| `examples/` | Saved synthetic observations |
-| `tests/` | Contract, conversion, replay, and dependency-boundary checks |
-| `.github/workflows/` | Automated tests on Python 3.11–3.13 |
+| Restricted intrusion | Person observed inside a configured restricted ROI |
+| Loitering | Continuous observations in a configured area exceed the threshold |
+| Possible abandoned object | Bag was near a person, becomes stationary, and remains alone while that person is observed away |
+| Wrong direction | A configured line is crossed with its forbidden direction label |
+| Vehicle entry | Vehicle crosses a configured entry line |
 
-**Rule: nothing outside the DeepStream module depends on DeepStream metadata.** Every downstream component accepts `Observation` or its JSON representation. The World State reference consumer demonstrates this boundary with no SDK imports.
+Rules are configured in `config/rules.json`. Gaps reset continuity. Old observations do not rewind state. Detector confidence is not a calibrated probability that an incident occurred. Candidates remain candidates until human review; optional VLM inference never rewrites facts.
 
-## Public format
+## PostgreSQL deployment
 
-```json
-{
-  "observation_id": "0b7e85bf-bbdd-5100-bbc8-8a62ffae78dd",
-  "camera_id": "cam-01",
-  "timestamp": "2026-01-01T00:00:00Z",
-  "local_track_id": "session-01:7",
-  "entity_type": "person",
-  "bbox": [0.1, 0.2, 0.2, 0.7],
-  "confidence": 0.95,
-  "zone": "walkway",
-  "direction": "right",
-  "line_crossing": [],
-  "model_version": "detector-v1",
-  "evidence_pointer": null
-}
+```sh
+cp .env.example .env
+# Set POSTGRES_PASSWORD in .env.
+docker compose up --build
 ```
 
-See [contract semantics](docs/observation-contract.md), [DeepStream integration](docs/deepstream-integration.md), and [handoff / remaining stages](docs/architecture.md).
+This starts an empty live-mode backend and PostgreSQL. See [deployment](docs/DEPLOYMENT.md) for seeding synthetic mode, backup, migration constraints, and local-access boundaries.
 
-## Scope and acceptance
+## Original observation commands
 
-Implemented: requested contract, conversion of object/frame metadata, synthetic generator, file validation, replay, minimal World State and candidate consumer, schema, tests, CI.
+```sh
+.venv/bin/mightyeye-observations generate --output output/observations.jsonl
+.venv/bin/mightyeye-observations validate output/observations.jsonl
+.venv/bin/mightyeye-observations replay output/observations.jsonl
+.venv/bin/mightyeye-observations schema
+# Send saved observations into a running full backend:
+.venv/bin/mightyeye-observations ingest output/observations.jsonl
+```
 
-The acceptance check is saved JSON → World State → candidate output without DeepStream. The existing sibling MightyEye dashboard prototype uses a different older contract; this repository is the standalone Stage 4 implementation and is not yet wired into that dashboard.
+The `replay` command retains its small Stage 4 reference-consumer behavior. `demo`, `serve`, and `ingest` exercise the full incident pipeline.
 
-Live GPU integration has not been tested here. Full cross-camera identity association, ANPR text extraction, incident lifecycle, VLM verification, database/evidence storage and dashboard integration remain later stages. Synthetic evidence pointers are null; generated observations do not claim that a camera or media file exists.
+## Tests
+
+```sh
+.venv/bin/pytest -q
+.venv/bin/mightyeye-observations demo --output output/acceptance
+```
+
+CI runs Python 3.11–3.13, a real PostgreSQL 16 service, evidence decoding, fixture replay, and the full generated demo. PostgreSQL tests are skipped locally unless `TEST_DATABASE_URL` is provided. The evidence generator uses the FFmpeg binary supplied by `imageio-ffmpeg`.
+
+## Honest acceptance boundary
+
+Working locally: complete synthetic software chain, persistent incidents/reviews, video extraction, analytics mapping tests, conservative association logic, provider contracts, and monitoring inputs.
+
+Pending on target hardware: DeepStream 9.1 runtime acceptance, stable real-video tracking, calibrated ROI/line directions, native Smart Record pipeline wiring, learned Re-ID embeddings, real plate detector/OCR, selected VLM provider, and staged real CCTV footage. These are tracked step by step rather than reported as complete.
