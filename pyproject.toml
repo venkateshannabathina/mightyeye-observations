@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mightyeye-observations"
+version = "0.1.0"
+description = "MightyEye observation contract, DeepStream adapter, synthetic generator and offline replay"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.9,<3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+mightyeye-observations = "mightyeye_observations.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

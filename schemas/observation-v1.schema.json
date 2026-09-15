@@ -1,0 +1,156 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "observation_id": {
+      "format": "uuid",
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "camera_id": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Camera Id",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "local_track_id": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Local Track Id"
+    },
+    "entity_type": {
+      "enum": [
+        "person",
+        "vehicle",
+        "bicycle",
+        "bag",
+        "plate",
+        "unknown"
+      ],
+      "title": "Entity Type",
+      "type": "string"
+    },
+    "bbox": {
+      "maxItems": 4,
+      "minItems": 4,
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "title": "Bbox",
+      "type": "array"
+    },
+    "confidence": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Confidence"
+    },
+    "zone": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Zone"
+    },
+    "direction": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Direction"
+    },
+    "line_crossing": {
+      "anyOf": [
+        {
+          "items": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Line Crossing"
+    },
+    "model_version": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Model Version",
+      "type": "string"
+    },
+    "evidence_pointer": {
+      "anyOf": [
+        {
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Evidence Pointer"
+    }
+  },
+  "required": [
+    "observation_id",
+    "camera_id",
+    "timestamp",
+    "local_track_id",
+    "entity_type",
+    "bbox",
+    "confidence",
+    "zone",
+    "direction",
+    "line_crossing",
+    "model_version",
+    "evidence_pointer"
+  ],
+  "title": "Observation",
+  "type": "object"
+}
